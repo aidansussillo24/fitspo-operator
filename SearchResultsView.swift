@@ -1,7 +1,8 @@
 //
 //  SearchResultsView.swift
 //  FitSpo
-//
+import Foundation
+
 
 import SwiftUI
 import AlgoliaSearchClient            // v8+ of the Swift API client
@@ -99,14 +100,20 @@ struct SearchResultsView: View {
 
             // `response.hits` is `[Hit<JSON>]`.  The SDK gives us a helper to
             // turn each hit into a strongly‑typed model:
+                 // `response.hits` is `[Hit<JSON>]`. Decode each hit into a Post using JSONSerialization and JSONDecoder.
             posts = response.hits.compactMap { hit -> Post? in
-                // 1. Decode into your Post struct
-                guard var post = try? hit.decode(Post.self) else { return nil }
-
-                // 2. Preserve Algolia’s objectID (handy for updates / deletes)
-                if let id = hit.objectID?.rawValue { post.objectID = id }
-                return post
-            }
+                // Convert the raw JSON dictionary into Data.
+                guard let data = try? JSONSerialization.data(withJSONObject: hit.json, options: []),
+                      var post = try? JSONDecoder().decode(Post.self, from: data) else {
+                    return nil
+                }
+                // If Algolia returns an objectID separately, store it on the model.
+                if let id = hit.objectID?.rawValue {
+                    post.objectID = id
+                }
+                retun post
+            }        
+            
 
         } catch {
             print("Algolia search error:", error.localizedDescription)
