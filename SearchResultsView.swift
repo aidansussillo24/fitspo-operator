@@ -101,13 +101,20 @@ struct SearchResultsView: View {
 
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            posts = response.hits.compactMap { hit in
-                guard let data = try? JSONSerialization.data(withJSONObject: hit, options: []) else { return nil }
-                guard var post = try? decoder.decode(Post.self, from: data) else { return nil }
-                if let id = hit["objectID"] as? String {
+            posts = response.hits.reduce(into: [Post]()) { result, hit in
+                // `Hit` from Algolia's Swift client stores record fields in
+                // `additionalProperties`. Encoding the hit back to JSON gives us
+                // a dictionary we can decode into `Post` without relying on
+                // subscripting support, which may be missing on older
+                // versions of the client.
+                guard let hitData = try? JSONEncoder().encode(hit) else { return }
+                guard var post = try? decoder.decode(Post.self, from: hitData) else { return }
+                // Extract the object identifier from the hit using reflection
+                let mirror = Mirror(reflecting: hit)
+                if let id = mirror.children.first(where: { $0.label == "objectID" })?.value as? String {
                     post.objectID = id
                 }
-                return post
+                result.append(post)
             }
 
         } catch {
