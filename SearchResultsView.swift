@@ -34,7 +34,7 @@ struct SearchResultsView: View {
                     List {
                         ForEach(users) { u in
                             NavigationLink(destination: ProfileView(userId: u.id)) {
-                                AccountRow(user: u)
+                                SearchAccountRow(user: u)
                             }
                         }
                     }
@@ -92,21 +92,19 @@ struct SearchResultsView: View {
                                       apiKey: "2b7e223b3ca3c31fc6aaea704b80ca8c")
             let index  = client.index(withName: "posts")
 
-            // Perform a typed search. `SearchResponse<Post>` returns hits whose
-            // `object` property is already a strongly‑typed `Post`. This avoids
-            // having to decode JSON manually and resolves the `hit.json` error.
-            let response: SearchResponse<Post> = try await index.search(
-                query: Query(query).set(\.hitsPerPage, to: 40),
-                as: Post.self
+            // Perform the search and decode results manually. Removing the
+            // `SearchResponse<Post>` generic resolves the build error on older
+            // versions of Algolia's Swift SDK.
+            let response = try await index.search(
+                query: Query(query).set(\.hitsPerPage, to: 40)
             )
 
-            // Map each hit to a `Post` value. Because `SearchResponse<Post>`
-            // returns `Hit<Post>` values, we can extract the `object` and
-            // assign the Algolia `objectID` if present.
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
             posts = response.hits.compactMap { hit in
-                var post = hit.object
-                // Preserve Algolia's objectID (handy for updates / deletes).
-                if let id = hit.objectID?.rawValue {
+                guard let data = try? JSONSerialization.data(withJSONObject: hit, options: []) else { return nil }
+                guard var post = try? decoder.decode(Post.self, from: data) else { return nil }
+                if let id = hit["objectID"] as? String {
                     post.objectID = id
                 }
                 return post
@@ -130,10 +128,10 @@ struct SearchResultsView: View {
 }
 
 /// A simple row used to display a user in search results. Defining this here
-/// resolves the `AccountRow` not found error if the standalone `AccountRow.swift`
-/// file isn't included in the target membership. It mirrors the original
-/// implementation from `AccountRow.swift`.
-struct AccountRow: View {
+/// ensures account rows render even if the standalone `AccountRow.swift` file
+/// isn't part of the build. It mirrors the original implementation from
+/// `AccountRow.swift`.
+struct SearchAccountRow: View {
     let user: UserLite
     var body: some View {
         HStack(spacing: 12) {
