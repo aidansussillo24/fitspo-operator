@@ -109,9 +109,7 @@ struct SearchResultsView: View {
                 // versions of the client.
                 guard let hitData = try? JSONEncoder().encode(hit) else { return }
                 guard var post = try? decoder.decode(Post.self, from: hitData) else { return }
-                // Extract the object identifier from the hit using reflection
-                let mirror = Mirror(reflecting: hit)
-                if let id = mirror.children.first(where: { $0.label == "objectID" })?.value as? String {
+                if let id = (hit as AnyObject).objectID as? String {
                     post.objectID = id
                 }
                 result.append(post)
