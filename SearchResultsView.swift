@@ -3,7 +3,6 @@
 //  FitSpo
 import Foundation
 
-
 import SwiftUI
 import AlgoliaSearchClient            // v8+ of the Swift API client
 
@@ -93,27 +92,25 @@ struct SearchResultsView: View {
                                       apiKey: "2b7e223b3ca3c31fc6aaea704b80ca8c")
             let index  = client.index(withName: "posts")
 
-            // Perform the search (async/await is built‑in from v8 onwards)
-            let response = try await index.search(
-                query: Query(query).set(\.hitsPerPage, to: 40)
+            // Perform a typed search. `SearchResponse<Post>` returns hits whose
+            // `object` property is already a strongly‑typed `Post`. This avoids
+            // having to decode JSON manually and resolves the `hit.json` error.
+            let response: SearchResponse<Post> = try await index.search(
+                query: Query(query).set(\.hitsPerPage, to: 40),
+                as: Post.self
             )
 
-            // `response.hits` is `[Hit<JSON>]`.  The SDK gives us a helper to
-            // turn each hit into a strongly‑typed model:
-                 // `response.hits` is `[Hit<JSON>]`. Decode each hit into a Post using JSONSerialization and JSONDecoder.
-            posts = response.hits.compactMap { hit -> Post? in
-                // Convert the raw JSON dictionary into Data.
-                guard let data = try? JSONSerialization.data(withJSONObject: hit.json, options: []),
-                      var post = try? JSONDecoder().decode(Post.self, from: data) else {
-                    return nil
-                }
-                // If Algolia returns an objectID separately, store it on the model.
+            // Map each hit to a `Post` value. Because `SearchResponse<Post>`
+            // returns `Hit<Post>` values, we can extract the `object` and
+            // assign the Algolia `objectID` if present.
+            posts = response.hits.compactMap { hit in
+                var post = hit.object
+                // Preserve Algolia's objectID (handy for updates / deletes).
                 if let id = hit.objectID?.rawValue {
                     post.objectID = id
                 }
-                retun post
-            }        
-            
+                return post
+            }
 
         } catch {
             print("Algolia search error:", error.localizedDescription)
