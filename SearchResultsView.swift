@@ -128,3 +128,27 @@ struct SearchResultsView: View {
         }
     }
 }
+
+/// A simple row used to display a user in search results. Defining this here
+/// resolves the `AccountRow` not found error if the standalone `AccountRow.swift`
+/// file isn't included in the target membership. It mirrors the original
+/// implementation from `AccountRow.swift`.
+struct AccountRow: View {
+    let user: UserLite
+    var body: some View {
+        HStack(spacing: 12) {
+            AsyncImage(url: URL(string: user.avatarURL)) { phase in
+                if let img = phase.image { img.resizable() }
+                else { Color.gray.opacity(0.3) }
+            }
+            .frame(width: 36, height: 36)
+            .clipShape(Circle())
+
+            Text(user.displayName)
+                .fontWeight(.semibold)
+
+            Spacer()
+        }
+        .padding(.vertical, 4)
+    }
+}
