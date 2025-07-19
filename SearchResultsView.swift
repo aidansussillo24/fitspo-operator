@@ -101,13 +101,13 @@ struct SearchResultsView: View {
 
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            posts = response.hits.compactMap { hit in
-                guard let data = try? JSONSerialization.data(withJSONObject: hit, options: []) else { return nil }
-                guard var post = try? decoder.decode(Post.self, from: data) else { return nil }
+            posts = response.hits.reduce(into: [Post]()) { result, hit in
+                guard let data = try? JSONSerialization.data(withJSONObject: hit, options: []) else { return }
+                guard var post = try? decoder.decode(Post.self, from: data) else { return }
                 if let id = hit["objectID"] as? String {
                     post.objectID = id
                 }
-                return post
+                result.append(post)
             }
 
         } catch {
