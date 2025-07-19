@@ -109,8 +109,6 @@ struct SearchResultsView: View {
                 // versions of the client.
                 guard let hitData = try? JSONEncoder().encode(hit) else { return }
                 guard var post = try? decoder.decode(Post.self, from: hitData) else { return }
-                // The Swift API exposes objectID directly on `Hit`, so attach it
-                // if present.
                 if let id = (hit as AnyObject).objectID as? String {
                     post.objectID = id
                 }
