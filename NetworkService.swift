@@ -398,7 +398,7 @@ final class NetworkService {
     }
 
     // decode Firestore → Post
-    fileprivate static func decodePost(doc: QueryDocumentSnapshot) -> Post? {
+    static func decodePost(doc: QueryDocumentSnapshot) -> Post? {
         let d = doc.data()
         guard
             let uid     = d["userId"]    as? String,
