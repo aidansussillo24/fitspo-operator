@@ -22,15 +22,7 @@ struct SearchResultsView: View {
     var body: some View {
         NavigationStack {
             Group {
-                // 1️⃣  Hashtags (future work)
-                if query.first == "#" {
-                    List {
-                        Text("Hashtag search coming next…")
-                            .foregroundColor(.secondary)
-                    }
-
-                // 2️⃣  Accounts
-                } else if query.first == "@" {
+                if query.first == "@" {
                     List {
                         ForEach(users) { u in
                             NavigationLink(destination: ProfileView(userId: u.id)) {
@@ -39,7 +31,6 @@ struct SearchResultsView: View {
                         }
                     }
 
-                // 3️⃣  Posts (default)
                 } else {
                     ScrollView {
                         if isLoading {
@@ -78,6 +69,8 @@ struct SearchResultsView: View {
             } catch {
                 print("User search error:", error.localizedDescription)
             }
+        } else if query.first == "#" {
+            await searchHashtag(String(query.dropFirst()))
         } else {
             await searchPosts()
         }
@@ -117,6 +110,38 @@ struct SearchResultsView: View {
                 result.append(post)
             }
 
+        } catch {
+            print("Algolia search error:", error.localizedDescription)
+            posts = []
+        }
+    }
+
+    @MainActor
+    private func searchHashtag(_ tag: String) async {
+        do {
+            let client = SearchClient(appID: "6WFE31B7U3",
+                                      apiKey: "2b7e223b3ca3c31fc6aaea704b80ca8c")
+            let index = client.index(withName: "posts")
+
+            let q = Query("")
+                .set(\.filters, to: "hashtags:\(tag.lowercased())")
+                .set(\.hitsPerPage, to: 40)
+
+            let response = try await index.search(query: q)
+
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            posts = response.hits.reduce(into: [Post]()) { result, hit in
+                guard let data = try? JSONEncoder().encode(hit),
+                      var post = try? decoder.decode(Post.self, from: data) else { return }
+                let mirror = Mirror(reflecting: hit)
+                if let id = mirror.children.first(where: { $0.label == "objectID" })?.value as? String {
+                    post.objectID = id
+                }
+                result.append(post)
+            }
+
+            posts.sort { $0.likes > $1.likes }
         } catch {
             print("Algolia search error:", error.localizedDescription)
             posts = []
