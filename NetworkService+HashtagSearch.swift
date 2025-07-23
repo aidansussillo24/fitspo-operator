@@ -9,14 +9,19 @@ import FirebaseFirestore
 
 extension NetworkService {
     /// Returns up to `limit` posts whose `hashtags` array contains the given tag.
+    /// Results are sorted by like count on the client to avoid requiring a
+    /// Firestore composite index.
     func searchPosts(hashtag raw: String, limit: Int = 40) async throws -> [Post] {
         let tag = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !tag.isEmpty else { return [] }
+
         let snap = try await db.collection("posts")
             .whereField("hashtags", arrayContains: tag)
-            .order(by: "likes", descending: true)
             .limit(to: limit)
             .getDocuments()
-        return snap.documents.compactMap { Self.decodePost(doc: $0) }
+
+        var posts = snap.documents.compactMap { Self.decodePost(doc: $0) }
+        posts.sort { $0.likes > $1.likes }
+        return posts
     }
 }
