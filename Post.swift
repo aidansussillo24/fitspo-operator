@@ -32,8 +32,6 @@ struct Post: Identifiable, Codable {
     // hashtags
     var hashtags: [String]
 
-    /// Optional Algolia object identifier
-    var objectID: String? = nil
 
     // convenience
     var coordinate: CLLocationCoordinate2D? {
@@ -86,6 +84,6 @@ struct Post: Identifiable, Codable {
     enum CodingKeys: String, CodingKey {
         case id, userId, imageURL, caption, username, timestamp, likes, isLiked
         case latitude, longitude, temp, weatherIcon, hashtags
-        case outfitItems, outfitTags, objectID
+        case outfitItems, outfitTags
     }
 }
