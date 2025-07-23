@@ -31,7 +31,7 @@ struct SearchRootView: View {
         .onSubmit(of: .search) {
             if !query.isEmpty { showResults = true }
         }
-        .onChange(of: query) { _ in updateSuggestions() }
+        .onChange(of: query) { _ in Task { await updateSuggestions() } }
         .sheet(isPresented: $showResults) {
             SearchResultsView(query: query)
                 .presentationDetents([.large])
@@ -44,16 +44,23 @@ struct SearchRootView: View {
     private func loadTags() async {
         do {
             trendingTags = try await NetworkService.shared.fetchTopHashtags()
-            updateSuggestions()
+            suggestions = trendingTags
         } catch {
             trendingTags = []
+            suggestions = []
         }
     }
 
-    private func updateSuggestions() {
+    @MainActor
+    private func updateSuggestions() async {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix("#") else { suggestions = []; return }
         let prefix = trimmed.dropFirst().lowercased()
-        suggestions = trendingTags.filter { $0.hasPrefix(prefix) }
+        do {
+            let dynamic = try await NetworkService.shared.suggestHashtags(prefix: String(prefix))
+            suggestions = dynamic
+        } catch {
+            suggestions = trendingTags.filter { $0.hasPrefix(prefix) }
+        }
     }
 }
