@@ -142,9 +142,21 @@ struct SearchResultsView: View {
             }
 
             posts.sort { $0.likes > $1.likes }
+
+            // Fallback to Firestore if Algolia returns no hits
+            if posts.isEmpty {
+                posts = try await NetworkService.shared
+                    .searchPosts(hashtag: tag)
+            }
         } catch {
             print("Algolia search error:", error.localizedDescription)
-            posts = []
+            do {
+                posts = try await NetworkService.shared
+                    .searchPosts(hashtag: tag)
+            } catch {
+                print("Firestore hashtag search error:", error.localizedDescription)
+                posts = []
+            }
         }
     }
 
