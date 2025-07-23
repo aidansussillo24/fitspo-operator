@@ -24,4 +24,28 @@ extension NetworkService {
         posts.sort { $0.likes > $1.likes }
         return posts
     }
+
+    /// Fetches a set of trending hashtags based on recent popular posts.
+    /// - Parameters:
+    ///   - limit: Maximum number of tags to return.
+    ///   - pages: Number of pages of trending posts to scan.
+    /// - Returns: Up to `limit` hashtag strings sorted by popularity.
+    func fetchTopHashtags(limit: Int = 20, pages: Int = 3) async throws -> [String] {
+        var counts: [String:Int] = [:]
+        var last: DocumentSnapshot?
+        var scanned = 0
+
+        while scanned < pages {
+            let bundle = try await fetchTrendingPosts(startAfter: last)
+            for post in bundle.posts {
+                for tag in post.hashtags { counts[tag, default: 0] += 1 }
+            }
+            last = bundle.lastDoc
+            if last == nil { break }
+            scanned += 1
+        }
+
+        let sorted = counts.sorted { $0.value > $1.value }.map { $0.key }
+        return Array(sorted.prefix(limit))
+    }
 }
