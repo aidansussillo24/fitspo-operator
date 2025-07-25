@@ -49,7 +49,7 @@ struct CommentsOverlay: View {
                     if v.translation.height > 0 { 
                         dragOffset = v.translation.height
                         // Dismiss keyboard immediately when swiping down
-                        if v.translation.height > 50 {
+                        if v.translation.height > 20 {
                             isInputActive = false
                         }
                     }
@@ -70,7 +70,7 @@ struct CommentsOverlay: View {
             listener?.remove() 
         }
         .ignoresSafeArea(edges: .bottom)
-        .animation(.easeInOut, value: dragOffset)
+        .animation(.easeInOut(duration: 0.25), value: dragOffset)
         .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: -5)
     }
 
