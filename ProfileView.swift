@@ -135,8 +135,10 @@ struct ProfileView: View {
             .navigationTitle(displayName.isEmpty ? "Profile" : displayName)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Sign Out") { try? Auth.auth().signOut() }
+                if isMe {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Sign Out") { try? Auth.auth().signOut() }
+                    }
                 }
             }
             .sheet(isPresented: $showingEdit) { EditProfileView() }

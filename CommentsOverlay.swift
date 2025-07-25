@@ -11,6 +11,8 @@ struct CommentsOverlay: View {
     let post: Post
     @Binding var isPresented: Bool
     var onCommentCountChange: (Int) -> Void
+    var onHashtagTap: ((String) -> Void)? = nil
+    var onMentionTap: ((String) -> Void)? = nil
 
     @State private var comments: [Comment] = []
     @State private var newText  = ""
@@ -23,6 +25,9 @@ struct CommentsOverlay: View {
     @State private var dragOffset: CGFloat = 0
     @State private var listener: ListenerRegistration?
     @StateObject private var kb = KeyboardResponder()
+    
+    // User profile for input bar
+    @State private var currentUserAvatar: String = ""
 
     private var myUid: String? { Auth.auth().currentUser?.uid }
 
@@ -34,19 +39,39 @@ struct CommentsOverlay: View {
         }
         .frame(maxWidth: .infinity)
         .frame(maxHeight: UIScreen.main.bounds.height * 0.65, alignment: .top)
-        .background(.ultraThinMaterial)
+        .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .offset(y: dragOffset)
         .padding(.bottom, kb.height)
         .gesture(
             DragGesture()
-                .onChanged { v in if v.translation.height > 0 { dragOffset = v.translation.height } }
-                .onEnded   { v in if v.translation.height > 100 { isPresented = false }; dragOffset = 0 }
+                .onChanged { v in 
+                    if v.translation.height > 0 { 
+                        dragOffset = v.translation.height
+                        // Dismiss keyboard immediately when swiping down
+                        if v.translation.height > 50 {
+                            isInputActive = false
+                        }
+                    }
+                }
+                .onEnded { v in 
+                    if v.translation.height > 100 { 
+                        isInputActive = false // Ensure keyboard is dismissed
+                        isPresented = false 
+                    }
+                    dragOffset = 0 
+                }
         )
-        .onAppear { attachListener() }
-        .onDisappear { listener?.remove() }
+        .onAppear {
+            attachListener()
+            loadCurrentUserProfile()
+        }
+        .onDisappear { 
+            listener?.remove() 
+        }
         .ignoresSafeArea(edges: .bottom)
         .animation(.easeInOut, value: dragOffset)
+        .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: -5)
     }
 
     // MARK: header
@@ -65,17 +90,24 @@ struct CommentsOverlay: View {
     private var list: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 14) {
+                LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(comments) { c in
                         CommentRow(
                             comment: c,
                             isMe: c.userId == myUid,
                             onEdit: { beginEdit(c) },
-                            onDelete: { deleteComment(c) }
+                            onDelete: { deleteComment(c) },
+                            onHashtagTap: { hashtag in
+                                onHashtagTap?(hashtag)
+                            },
+                            onMentionTap: { username in
+                                onMentionTap?(username)
+                            }
                         )
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
                     }
                 }
-                .padding(.horizontal)
                 .padding(.top, 6)
             }
             .onChange(of: comments.count) { _ in
@@ -88,30 +120,78 @@ struct CommentsOverlay: View {
     private var inputBar: some View {
         VStack(spacing: 8) {
             if let editingId = editingId {
-                HStack {
+                HStack(spacing: 12) {
+                    // User's profile image
+                    AsyncImage(url: URL(string: currentUserAvatar)) { phase in
+                        if let img = phase.image { 
+                            img.resizable().aspectRatio(contentMode: .fill)
+                        } else { 
+                            Image(systemName: "person.crop.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(.gray)
+                        }
+                    }
+                    .frame(width: 32, height: 32)
+                    .clipShape(Circle())
+                    
                     TextField("Edit comment", text: $editText)
-                        .textFieldStyle(.roundedBorder)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(20)
                         .focused($isInputActive)
-                    Button("Save") { commitEdit(id: editingId) }
-                    Button("Cancel") { cancelEdit() }
-                        .foregroundColor(.red)
+                    
+                    VStack(spacing: 4) {
+                        Button("Save") { commitEdit(id: editingId) }
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.blue)
+                        Button("Cancel") { cancelEdit() }
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.red)
+                    }
                 }
             } else {
-                HStack {
+                HStack(spacing: 12) {
+                    // User's profile image
+                    AsyncImage(url: URL(string: currentUserAvatar)) { phase in
+                        if let img = phase.image { 
+                            img.resizable().aspectRatio(contentMode: .fill)
+                        } else { 
+                            Image(systemName: "person.crop.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(.gray)
+                        }
+                    }
+                    .frame(width: 32, height: 32)
+                    .clipShape(Circle())
+                    
                     TextField("Add a comment…", text: $newText)
-                        .textFieldStyle(.roundedBorder)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(20)
                         .focused($isInputActive)
+                    
                     Button {
                         sendComment()
                     } label: {
-                        Image(systemName: "paperplane.fill").font(.title3)
+                        Text("Post")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(newText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .secondary : .blue)
                     }
                     .disabled(newText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }
-        .padding()
-        .background(.thinMaterial)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(.systemBackground))
+        .overlay(
+            Rectangle()
+                .frame(height: 0.5)
+                .foregroundColor(Color(.separator))
+            , alignment: .top
+        )
     }
 
     // MARK: Firestore listener
@@ -169,6 +249,15 @@ struct CommentsOverlay: View {
     private func deleteComment(_ c: Comment) {
         NetworkService.shared.deleteComment(postId: post.id, commentId: c.id) { _ in }
     }
+
+    private func loadCurrentUserProfile() {
+        guard let uid = myUid else { return }
+        Firestore.firestore().collection("users").document(uid).getDocument { snap, _ in
+            if let data = snap?.data() {
+                self.currentUserAvatar = data["avatarURL"] as? String ?? ""
+            }
+        }
+    }
 }
 
 // MARK: – Single comment row
@@ -177,27 +266,90 @@ private struct CommentRow: View {
     let isMe: Bool
     var onEdit: () -> Void
     var onDelete: () -> Void
+    var onHashtagTap: (String) -> Void
+    var onMentionTap: (String) -> Void
 
     @State private var name: String = ""
     @State private var avatar: String?
+    @State private var isLiked: Bool = false
 
     private static var cache: [String:(String,String?)] = [:]
+    private var myUid: String? { Auth.auth().currentUser?.uid }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: 12) {
+            // Profile Image
             AsyncImage(url: URL(string: avatar ?? comment.userPhotoURL ?? "")) { phase in
-                if let img = phase.image { img.resizable() } else { Color.gray.opacity(0.3) }
+                if let img = phase.image {
+                    img.resizable()
+                        .aspectRatio(contentMode: .fill)
+                } else {
+                    Color.gray.opacity(0.3)
+                }
             }
-            .frame(width: 34, height: 34)
+            .frame(width: 32, height: 32)
             .clipShape(Circle())
 
+            // Content
             VStack(alignment: .leading, spacing: 4) {
-                Text(name.isEmpty ? comment.username : name).font(.subheadline).bold()
-                Text(comment.text)
+                // Username and comment text in one line (Instagram style)
+                HStack(alignment: .top, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(alignment: .top, spacing: 4) {
+                            Text(name.isEmpty ? comment.username : name)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.primary)
+
+                            ClickableHashtagText(text: comment.text) { hashtag in
+                                onHashtagTap(hashtag)
+                            } onMentionTap: { username in
+                                onMentionTap(username)
+                            }
+                            .font(.system(size: 13))
+                            .lineLimit(nil)
+                        }
+
+                        // Action buttons (timestamp, like, reply)
+                        HStack(spacing: 16) {
+                            Text(comment.timeAgo)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.secondary)
+
+                            if comment.likeCount > 0 {
+                                Text("\(comment.likeCount) \(comment.likeCount == 1 ? "like" : "likes")")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Button("Reply") {
+                                // TODO: Implement reply functionality
+                            }
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.secondary)
+
+                            Spacer()
+                        }
+                        .padding(.top, 2)
+                    }
+
+                    Spacer()
+
+                    // Like button (heart)
+                    Button {
+                        toggleLike()
+                    } label: {
+                        Image(systemName: isLiked ? "heart.fill" : "heart")
+                            .font(.system(size: 12))
+                            .foregroundColor(isLiked ? .red : .secondary)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
             }
-            Spacer(minLength: 0)
         }
-        .onAppear(perform: ensureProfile)
+        .onAppear {
+            ensureProfile()
+            checkIfLiked()
+        }
         .contextMenu {
             if isMe {
                 Button("Edit", action: onEdit)
@@ -223,5 +375,30 @@ private struct CommentRow: View {
                 CommentRow.cache[comment.userId] = (n, a)
                 name = n; avatar = a
             }
+    }
+
+    private func checkIfLiked() {
+        guard let uid = myUid else { return }
+        isLiked = comment.likedBy.contains(uid)
+    }
+
+    private func toggleLike() {
+        guard let uid = myUid else { return }
+
+        if isLiked {
+            NetworkService.shared.unlikeComment(
+                postId: comment.postId,
+                commentId: comment.id,
+                userId: uid
+            ) { _ in }
+        } else {
+            NetworkService.shared.likeComment(
+                postId: comment.postId,
+                commentId: comment.id,
+                userId: uid
+            ) { _ in }
+        }
+
+        isLiked.toggle()
     }
 }

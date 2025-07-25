@@ -68,4 +68,42 @@ extension NetworkService {
                 else             { completion(.success(())) }
             }
     }
+    
+    // MARK: – Like a comment
+    func likeComment(postId: String,
+                     commentId: String,
+                     userId: String,
+                     completion: @escaping (Result<Void,Error>) -> Void) {
+        
+        let commentRef = Firestore.firestore()
+            .collection("posts").document(postId)
+            .collection("comments").document(commentId)
+        
+        commentRef.updateData([
+            "likedBy": FieldValue.arrayUnion([userId]),
+            "likeCount": FieldValue.increment(Int64(1))
+        ]) { err in
+            if let err = err { completion(.failure(err)) }
+            else             { completion(.success(())) }
+        }
+    }
+    
+    // MARK: – Unlike a comment
+    func unlikeComment(postId: String,
+                       commentId: String,
+                       userId: String,
+                       completion: @escaping (Result<Void,Error>) -> Void) {
+        
+        let commentRef = Firestore.firestore()
+            .collection("posts").document(postId)
+            .collection("comments").document(commentId)
+        
+        commentRef.updateData([
+            "likedBy": FieldValue.arrayRemove([userId]),
+            "likeCount": FieldValue.increment(Int64(-1))
+        ]) { err in
+            if let err = err { completion(.failure(err)) }
+            else             { completion(.success(())) }
+        }
+    }
 }

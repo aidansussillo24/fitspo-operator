@@ -11,7 +11,7 @@ struct SearchResultsView: View {
     let query: String                 // either "@sofia" or "#beach"
     @State private var users:  [UserLite] = []
     @State private var posts:  [Post]     = []
-    @State private var isLoading         = false
+    @State private var isLoading         = true  // Start with loading true
     @Environment(\.dismiss) private var dismiss
 
     // Masonry split columns like HomeView
@@ -54,25 +54,44 @@ struct SearchResultsView: View {
                 Button("Close") { dismiss() }
             }}
             .task { await runSearch() }
+            .onAppear {
+                // Backup to ensure search runs
+                if !isLoading && posts.isEmpty && users.isEmpty {
+                    Task { await runSearch() }
+                }
+            }
         }
     }
 
     // ────────── Search orchestration ──────────
     @MainActor
     private func runSearch() async {
+        // Ensure we're in loading state
         isLoading = true
+        
+        // Small delay to ensure UI is ready
+        try? await Task.sleep(for: .milliseconds(100))
+        
         defer { isLoading = false }
 
         if query.first == "@" {
             do {
                 users = try await NetworkService.shared.searchUsers(prefix: query)
+                print("Found \(users.count) users for query: \(query)")
             } catch {
                 print("User search error:", error.localizedDescription)
+                users = []
             }
         } else if query.first == "#" {
             await searchHashtag(String(query.dropFirst()))
         } else {
             await searchHashtag(query)
+        }
+        
+        // Force UI update
+        await MainActor.run {
+            // Trigger a state change to force UI refresh
+            isLoading = false
         }
     }
 
@@ -80,6 +99,7 @@ struct SearchResultsView: View {
     private func searchHashtag(_ tag: String) async {
         do {
             posts = try await NetworkService.shared.searchPosts(hashtag: tag)
+            print("Found \(posts.count) posts for hashtag: \(tag)")
         } catch {
             print("Hashtag search error:", error.localizedDescription)
             posts = []

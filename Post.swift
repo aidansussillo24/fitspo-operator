@@ -87,3 +87,13 @@ struct Post: Identifiable, Codable {
         case outfitItems, outfitTags
     }
 }
+
+// Hashable conformance for navigationDestination(item:)
+extension Post: Hashable {
+    static func == (lhs: Post, rhs: Post) -> Bool {
+        lhs.id == rhs.id
+    }
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+}

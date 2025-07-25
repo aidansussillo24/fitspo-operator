@@ -9,6 +9,8 @@ struct Comment: Identifiable, Codable {
     let userPhotoURL: String?
     let text: String
     let timestamp: Date
+    let likeCount: Int
+    let likedBy: [String] // Array of userIds who liked this comment
 
     // Convenience dictionary for Firestore writes
     var dictionary: [String: Any] {
@@ -19,7 +21,9 @@ struct Comment: Identifiable, Codable {
             "username":      username,
             "userPhotoURL":  userPhotoURL as Any,
             "text":          text,
-            "timestamp":     timestamp.timeIntervalSince1970
+            "timestamp":     timestamp.timeIntervalSince1970,
+            "likeCount":     likeCount,
+            "likedBy":       likedBy
         ]
     }
 
@@ -29,7 +33,9 @@ struct Comment: Identifiable, Codable {
          username: String,
          userPhotoURL: String?,
          text: String,
-         timestamp: Date = .init()) {
+         timestamp: Date = .init(),
+         likeCount: Int = 0,
+         likedBy: [String] = []) {
         self.id           = id
         self.postId       = postId
         self.userId       = userId
@@ -37,6 +43,8 @@ struct Comment: Identifiable, Codable {
         self.userPhotoURL = userPhotoURL
         self.text         = text
         self.timestamp    = timestamp
+        self.likeCount    = likeCount
+        self.likedBy      = likedBy
     }
 
     /// Build from Firestore data
@@ -57,5 +65,30 @@ struct Comment: Identifiable, Codable {
         self.userPhotoURL = dict["userPhotoURL"] as? String
         self.text         = text
         self.timestamp    = Date(timeIntervalSince1970: ts)
+        self.likeCount    = dict["likeCount"] as? Int ?? 0
+        self.likedBy      = dict["likedBy"] as? [String] ?? []
+    }
+    
+    /// Instagram-style time formatting (e.g., "1d", "2h", "3m", "now")
+    var timeAgo: String {
+        let now = Date()
+        let interval = now.timeIntervalSince(timestamp)
+        
+        let minutes = Int(interval / 60)
+        let hours = Int(interval / 3600)
+        let days = Int(interval / 86400)
+        let weeks = Int(interval / 604800)
+        
+        if weeks > 0 {
+            return "\(weeks)w"
+        } else if days > 0 {
+            return "\(days)d"
+        } else if hours > 0 {
+            return "\(hours)h"
+        } else if minutes > 0 {
+            return "\(minutes)m"
+        } else {
+            return "now"
+        }
     }
 }

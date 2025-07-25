@@ -28,6 +28,11 @@ struct ExploreView: View {
     @State private var accountHits: [UserLite] = []
     @State private var isSearchingAccounts = false
     @State private var showResults = false
+    @State private var selectedUserId: String? = nil
+
+    @State private var hashtagSuggestions: [String] = []
+    @State private var isSearchingHashtags = false
+    @State private var showSuggestions = false
 
     // chips / filters
     @State private var selectedChip = "All"
@@ -36,6 +41,8 @@ struct ExploreView: View {
     @State private var filter      = ExploreFilter()
     @State private var showFilters = false
 
+    @State private var selectedPost: Post? = nil
+
     private var isAccountMode: Bool {
         !searchText.isEmpty && searchText.first != "#"
     }
@@ -43,27 +50,39 @@ struct ExploreView: View {
     // ────────── Body ──────────
     var body: some View {
         NavigationStack {
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    chipRow
-                    trendingTagsRow
-                    if isAccountMode { accountResultsList } else { grid }
+            Group {
+                if searchText.isEmpty {
+                    // Normal Explore content
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            chipRow
+                            trendingTagsRow
+                            grid
+                        }
+                    }
+                } else {
+                    // Search takes over the entire screen
+                    searchContent
                 }
             }
             .navigationTitle("Explore")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Image(systemName: "slider.horizontal.3")
-                        .onTapGesture { showFilters = true }
+                    if searchText.isEmpty {
+                        Image(systemName: "slider.horizontal.3")
+                            .onTapGesture { showFilters = true }
+                    }
                 }
             }
             .sheet(isPresented: $showFilters) {
-                ExploreFilterSheet(filter: $filter)
-                    .presentationDetents([.fraction(0.45)])
+                if searchText.isEmpty {
+                    ExploreFilterSheet(filter: $filter)
+                        .presentationDetents([.fraction(0.45)])
+                }
             }
             .searchable(text: $searchText,
                         prompt: "Search accounts or #tags")
-            .onSubmit(of: .search) { if !searchText.isEmpty { showResults = true } }
+            .onSubmit(of: .search) { if !searchText.isEmpty { showResults = true; showSuggestions = false } }
             .onChange(of: searchText,  perform: handleSearchChange)
             .onChange(of: selectedChip) { _ in applyFilter() }
             .onChange(of: filter)       { _ in applyFilter() }
@@ -71,6 +90,24 @@ struct ExploreView: View {
             .task        { await coldStart() }
             .navigationDestination(isPresented: $showResults) {
                 SearchResultsView(query: searchText)
+            }
+            .navigationDestination(item: $selectedUserId) { userId in
+                ProfileView(userId: userId)
+            }
+            .navigationDestination(item: $selectedPost) { post in
+                PostDetailView(post: post)
+            }
+            .onChange(of: selectedUserId) { newValue in
+                if newValue == nil && !searchText.isEmpty {
+                    showSuggestions = true
+                    Task { await fetchSuggestions() }
+                }
+            }
+            .onAppear {
+                if !searchText.isEmpty && selectedUserId == nil {
+                    showSuggestions = true
+                    Task { await fetchSuggestions() }
+                }
             }
         }
     }
@@ -94,6 +131,12 @@ struct ExploreView: View {
                 .fetchTrendingPosts(startAfter: lastDoc)
             lastDoc = bundle.lastDoc
             allPosts.append(contentsOf: bundle.posts)
+            // Deduplicate by post.id
+            var seen = Set<String>()
+            allPosts = allPosts.filter { post in
+                if seen.contains(post.id) { return false }
+                seen.insert(post.id); return true
+            }
             computeTrendingTags()
             applyFilter()
         } catch {
@@ -104,6 +147,12 @@ struct ExploreView: View {
     private func loadMoreIfNeeded() async {
         guard !isLoading, lastDoc != nil, !isAccountMode else { return }
         await reload(clear: false)
+        // Deduplicate after loading more
+        var seen = Set<String>()
+        allPosts = allPosts.filter { post in
+            if seen.contains(post.id) { return false }
+            seen.insert(post.id); return true
+        }
     }
 
     // ────────── Trending tags ──────────
@@ -123,22 +172,52 @@ struct ExploreView: View {
 
     // ────────── Search callbacks ──────────
     private func handleSearchChange(_ q: String) {
-        Task { await queryAccounts() }
+        showSuggestions = !q.isEmpty
+        Task {
+            await fetchSuggestions()
+        }
         applyFilter()
     }
 
-    private func queryAccounts() async {
-        guard isAccountMode else { accountHits = []; return }
-        if isSearchingAccounts { return }
-
-        isSearchingAccounts = true
-        defer { isSearchingAccounts = false }
-
-        do {
-            accountHits = try await NetworkService.shared
-                .searchUsers(prefix: searchText)
-        } catch {
+    private func fetchSuggestions() async {
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
             accountHits = []
+            hashtagSuggestions = []
+            return
+        }
+        if trimmed.first == "#" {
+            // Only hashtag suggestions
+            isSearchingHashtags = true
+            defer { isSearchingHashtags = false }
+            let prefix = String(trimmed.dropFirst())
+            do {
+                hashtagSuggestions = try await NetworkService.shared.suggestHashtags(prefix: prefix)
+            } catch {
+                hashtagSuggestions = []
+            }
+            accountHits = []
+        } else {
+            // Both accounts and hashtags
+            async let users: Void = {
+                isSearchingAccounts = true
+                defer { isSearchingAccounts = false }
+                do {
+                    accountHits = try await NetworkService.shared.searchUsers(prefix: trimmed)
+                } catch {
+                    accountHits = []
+                }
+            }()
+            async let hashtags: Void = {
+                isSearchingHashtags = true
+                defer { isSearchingHashtags = false }
+                do {
+                    hashtagSuggestions = try await NetworkService.shared.suggestHashtags(prefix: trimmed)
+                } catch {
+                    hashtagSuggestions = []
+                }
+            }()
+            _ = await (users, hashtags)
         }
     }
 
@@ -190,30 +269,12 @@ struct ExploreView: View {
         }
     }
 
-    private var accountResultsList: some View {
-        VStack(spacing: 0) {
-            if isSearchingAccounts {
-                ProgressView().padding(.top, 40)
-            } else if accountHits.isEmpty {
-                Text("No accounts found")
-                    .foregroundColor(.secondary)
-                    .padding(.top, 40)
-            } else {
-                ForEach(accountHits) { u in
-                    NavigationLink { ProfileView(userId: u.id) } label: {
-                        AccountRow(user: u)
-                    }
-                    Divider()
-                }
-            }
-        }
-        .padding(.horizontal)
-    }
-
     private var grid: some View {
         LazyVGrid(columns: columns, spacing: spacing) {
             ForEach(posts) { post in
-                NavigationLink { PostDetailView(post: post) } label: {
+                NavigationLink {
+                    PostDetailView(post: post)
+                } label: {
                     ImageTile(url: post.imageURL)
                 }
                 .onAppear {
@@ -225,6 +286,116 @@ struct ExploreView: View {
         }
         .padding(.horizontal, spacing / 2)
         .padding(.bottom, spacing)
+    }
+
+    private var searchContent: some View {
+        VStack(spacing: 0) {
+            Color.clear.frame(height: 8) // Spacing below search bar
+            
+            if isSearchingAccounts || isSearchingHashtags {
+                VStack {
+                    Spacer()
+                    ProgressView()
+                        .padding()
+                    Text("Searching...")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        if searchText.first == "#" {
+                            // Only hashtags
+                            if hashtagSuggestions.isEmpty {
+                                VStack {
+                                    Spacer()
+                                    Text("No hashtags found")
+                                        .foregroundColor(.secondary)
+                                        .padding()
+                                    Spacer()
+                                }
+                            } else {
+                                ForEach(hashtagSuggestions, id: \.self) { tag in
+                                    Button(action: {
+                                        searchText = "#" + tag
+                                        showResults = true
+                                        showSuggestions = false
+                                    }) {
+                                        HStack(spacing: 12) {
+                                            Text("#")
+                                                .fontWeight(.bold)
+                                                .foregroundColor(.primary)
+                                            Text(tag)
+                                                .foregroundColor(.primary)
+                                            Spacer()
+                                        }
+                                        .padding(.vertical, 14)
+                                        .padding(.horizontal, 20)
+                                    }
+                                    .background(Color.clear)
+                                }
+                            }
+                        } else {
+                            // Both accounts and hashtags
+                            if accountHits.isEmpty && hashtagSuggestions.isEmpty {
+                                VStack {
+                                    Spacer()
+                                    Text("No results found")
+                                        .foregroundColor(.secondary)
+                                        .padding()
+                                    Spacer()
+                                }
+                            } else {
+                                // Accounts
+                                ForEach(accountHits) { u in
+                                    Button(action: {
+                                        selectedUserId = u.id
+                                        showSuggestions = false
+                                    }) {
+                                        HStack(spacing: 12) {
+                                            AsyncImage(url: URL(string: u.avatarURL)) { phase in
+                                                if let img = phase.image { img.resizable() }
+                                                else { Color.gray.opacity(0.3) }
+                                            }
+                                            .frame(width: 36, height: 36)
+                                            .clipShape(Circle())
+                                            Text(u.displayName)
+                                                .fontWeight(.semibold)
+                                                .foregroundColor(.primary)
+                                            Spacer()
+                                        }
+                                        .padding(.vertical, 14)
+                                        .padding(.horizontal, 20)
+                                    }
+                                    .background(Color.clear)
+                                }
+                                // Hashtags
+                                ForEach(hashtagSuggestions, id: \.self) { tag in
+                                    Button(action: {
+                                        searchText = "#" + tag
+                                        showResults = true
+                                        showSuggestions = false
+                                    }) {
+                                        HStack(spacing: 12) {
+                                            Text("#")
+                                                .fontWeight(.bold)
+                                                .foregroundColor(.primary)
+                                            Text(tag)
+                                                .foregroundColor(.primary)
+                                            Spacer()
+                                        }
+                                        .padding(.vertical, 14)
+                                        .padding(.horizontal, 20)
+                                    }
+                                    .background(Color.clear)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.bottom, 80) // Extra padding at bottom for scrolling
+                }
+            }
+        }
     }
 
     // ────────── Filtering ──────────

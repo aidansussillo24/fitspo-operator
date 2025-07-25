@@ -61,6 +61,12 @@ struct PostDetailView: View {
     @State private var imgRatio: CGFloat? = nil     // natural h/w
     @State private var faceTags: [UserTag] = []
     @State private var dynamicRank: Int? = nil      // fetched from cache
+    @State private var showHashtagResults = false
+    @State private var currentHashtagQuery: String = ""
+    @State private var isLoadingHashtag = false
+    @State private var selectedUserId: String = ""
+    @State private var showUserProfile = false
+    @State private var isLoadingMention = false
 
     init(post: Post, rank: Int? = nil, navTitle: String = "Post") {
         self.post = post
@@ -94,7 +100,13 @@ struct PostDetailView: View {
                 CommentsOverlay(
                     post: post,
                     isPresented: $showComments,
-                    onCommentCountChange: { commentCount = $0 }
+                    onCommentCountChange: { commentCount = $0 },
+                    onHashtagTap: { hashtag in
+                        handleHashtagTap(hashtag)
+                    },
+                    onMentionTap: { username in
+                        handleMentionTap(username)
+                    }
                 )
                 .transition(.move(edge: .bottom))
             }
@@ -118,6 +130,32 @@ struct PostDetailView: View {
         .task { await ensureHotRank() }
         .onAppear   { attachListenersAndFetch() }
         .onDisappear{ postListener?.remove() }
+        .sheet(isPresented: $showHashtagResults) {
+            SearchResultsView(query: currentHashtagQuery)
+        }
+        .sheet(isPresented: $showUserProfile) {
+            NavigationStack {
+                ProfileView(userId: selectedUserId)
+            }
+        }
+        .overlay {
+            if isLoadingHashtag || isLoadingMention {
+                Color.black.opacity(0.3)
+                    .overlay {
+                        VStack(spacing: 12) {
+                            ProgressView()
+                                .scaleEffect(1.2)
+                            Text(isLoadingHashtag ? "Loading hashtag..." : "Looking up user...")
+                                .foregroundColor(.white)
+                                .font(.subheadline)
+                        }
+                        .padding(20)
+                        .background(.ultraThickMaterial)
+                        .cornerRadius(12)
+                    }
+                    .ignoresSafeArea()
+            }
+        }
     }
 
     // MARK: ----------------------------------------------------
@@ -327,7 +365,11 @@ struct PostDetailView: View {
                 Text(isLoadingAuthor ? "Loading…" : authorName)
                     .fontWeight(.semibold)
             }
-            Text(post.caption)
+            ClickableHashtagText(text: post.caption) { hashtag in
+                handleHashtagTap(hashtag)
+            } onMentionTap: { username in
+                handleMentionTap(username)
+            }
         }
         .padding(.horizontal)
     }
@@ -527,6 +569,52 @@ struct PostDetailView: View {
         await HotRankStore.shared.refreshIfNeeded()
         if let r = HotRankStore.shared.rank(for: post.id) {
             dynamicRank = r
+        }
+    }
+
+    private func handleHashtagTap(_ hashtag: String) {
+        isLoadingHashtag = true
+        
+        Task {
+            // Set the query
+            currentHashtagQuery = "#\(hashtag)"
+            
+            // Show loading for a moment to ensure everything is set up
+            try? await Task.sleep(for: .milliseconds(500))
+            
+            // Hide loading and show results
+            isLoadingHashtag = false
+            showHashtagResults = true
+        }
+    }
+    
+    private func handleMentionTap(_ username: String) {
+        // Validate username before navigation
+        let cleanUsername = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Don't navigate if username is empty or invalid
+        guard !cleanUsername.isEmpty else {
+            print("Warning: Empty username tapped, ignoring")
+            return
+        }
+        
+        isLoadingMention = true
+        
+        // Look up the actual userId for this username
+        print("Looking up userId for username: \(cleanUsername)")
+        NetworkService.shared.lookupUserId(username: cleanUsername) { userId in
+            DispatchQueue.main.async {
+                isLoadingMention = false
+                
+                if let userId = userId {
+                    print("Found userId: \(userId) for username: \(cleanUsername)")
+                    selectedUserId = userId
+                    showUserProfile = true
+                } else {
+                    print("No user found with username: \(cleanUsername)")
+                    // Could show an alert or error message to user
+                }
+            }
         }
     }
 }
