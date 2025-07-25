@@ -70,7 +70,9 @@ struct CommentsOverlay: View {
             listener?.remove() 
         }
         .animation(.easeInOut(duration: 0.25), value: dragOffset)
+        .animation(.easeInOut(duration: 0.3), value: kb.height)
         .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: -5)
+        .edgesIgnoringSafeArea(.bottom)
     }
 
     // MARK: header
@@ -88,27 +90,27 @@ struct CommentsOverlay: View {
     // MARK: comment list
     private var list: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(comments) { c in
-                        CommentRow(
-                            comment: c,
-                            isMe: c.userId == myUid,
-                            onEdit: { beginEdit(c) },
-                            onDelete: { deleteComment(c) },
-                            onHashtagTap: { hashtag in
-                                onHashtagTap?(hashtag)
-                            },
-                            onMentionTap: { username in
-                                onMentionTap?(username)
-                            }
-                        )
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                    }
-                }
-                .padding(.top, 6)
-            }
+             ScrollView {
+                 LazyVStack(alignment: .leading, spacing: 0) {
+                     ForEach(comments) { c in
+                         CommentRow(
+                             comment: c,
+                             isMe: c.userId == myUid,
+                             onEdit: { beginEdit(c) },
+                             onDelete: { deleteComment(c) },
+                             onHashtagTap: { hashtag in
+                                 onHashtagTap?(hashtag)
+                             },
+                             onMentionTap: { username in
+                                 onMentionTap?(username)
+                             }
+                         )
+                         .padding(.horizontal, 16)
+                         .padding(.vertical, 8)
+                     }
+                 }
+                 .padding(.top, 6)
+             }
             .onChange(of: comments.count) { _ in
                 if let last = comments.last { proxy.scrollTo(last.id, anchor: .bottom) }
             }
@@ -184,7 +186,7 @@ struct CommentsOverlay: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 12)
-        .padding(.bottom, kb.height > 0 ? 8 : 12)
+        .padding(.bottom, 32)
         .background(Color(.systemBackground))
         .overlay(
             Rectangle()
@@ -192,7 +194,6 @@ struct CommentsOverlay: View {
                 .foregroundColor(Color(.separator))
             , alignment: .top
         )
-        .animation(.easeInOut(duration: 0.25), value: kb.height)
     }
 
     // MARK: Firestore listener
