@@ -109,10 +109,12 @@ struct PostDetailView: View {
                     }
                 )
                 .transition(.move(edge: .bottom))
+                .zIndex(1000)
             }
         }
         .animation(.easeInOut, value: showComments)
         .navigationTitle(navTitle)
+        .toolbar(showComments ? .hidden : .visible, for: .tabBar)
         .navigationBarTitleDisplayMode(.inline)
         .alert("Delete Post?", isPresented: $showDeleteConfirm,
                actions: deleteAlertButtons)

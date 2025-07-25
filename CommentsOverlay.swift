@@ -38,9 +38,9 @@ struct CommentsOverlay: View {
             inputBar
         }
         .frame(maxWidth: .infinity)
-        .frame(maxHeight: UIScreen.main.bounds.height * 0.65, alignment: .top)
+        .frame(maxHeight: .infinity, alignment: .top)
         .background(Color(.systemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: dragOffset > 0 ? 16 : 0, style: .continuous))
         .offset(y: dragOffset)
         .padding(.bottom, kb.height)
         .gesture(
@@ -69,7 +69,6 @@ struct CommentsOverlay: View {
         .onDisappear { 
             listener?.remove() 
         }
-        .ignoresSafeArea(edges: .bottom)
         .animation(.easeInOut(duration: 0.25), value: dragOffset)
         .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: -5)
     }
@@ -184,7 +183,8 @@ struct CommentsOverlay: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.top, 12)
+        .padding(.bottom, kb.height > 0 ? 8 : 12)
         .background(Color(.systemBackground))
         .overlay(
             Rectangle()
@@ -192,6 +192,7 @@ struct CommentsOverlay: View {
                 .foregroundColor(Color(.separator))
             , alignment: .top
         )
+        .animation(.easeInOut(duration: 0.25), value: kb.height)
     }
 
     // MARK: Firestore listener
